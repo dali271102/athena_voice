@@ -1,0 +1,241 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Athena Hospital</title>
+<style>
+  :root { --blue:#1d6fe8; --blue-dark:#144fb0; --red:#e5484d; --bg:#f4f8ff; --text:#10223f; }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html, body { height:100%; margin:0; }
+  body { font-family:system-ui, Arial, sans-serif; background:var(--bg); color:var(--text); display:flex; justify-content:center; }
+  .app { width:100%; max-width:520px; height:100dvh; display:flex; flex-direction:column;
+         padding:20px 16px calc(16px + env(safe-area-inset-bottom)); text-align:center; }
+  h1 { margin:8px 0 4px; color:var(--blue); }
+  .sub { margin:0 0 20px; color:#52627f; }
+  #startScreen { margin:auto 0; }
+  #callScreen { display:none; flex:1; min-height:0; flex-direction:column; }
+  select { padding:12px 14px; border-radius:14px; border:1px solid #cfd9ee; font-size:1rem; margin-bottom:20px; background:#fff; }
+  button { border:0; border-radius:999px; font-size:1.05rem; color:#fff; cursor:pointer; }
+  #callBtn { background:var(--blue); padding:18px 36px; font-size:1.15rem; }
+  .avatar { width:84px; height:84px; border-radius:50%; background:var(--blue); color:#fff; font-size:2.2rem;
+            display:flex; align-items:center; justify-content:center; margin:0 auto 8px; }
+  .avatar.talking { animation:pulse 1.2s infinite; }
+  @keyframes pulse { 0%{box-shadow:0 0 0 0 rgba(29,111,232,.5)} 100%{box-shadow:0 0 0 24px rgba(29,111,232,0)} }
+  .timer { font-size:1.2rem; font-variant-numeric:tabular-nums; }
+  #status { color:#52627f; min-height:1.4em; margin:4px 0 8px; }
+  #log { flex:1; min-height:0; overflow:auto; text-align:start; font-size:1rem; padding:4px 0; }
+  #log div { margin:8px 0; padding:10px 14px; border-radius:16px; background:#eef3fc; max-width:90%; }
+  #log div.me { background:#dcebff; margin-inline-start:auto; }
+  #micBtn { width:100%; background:var(--blue); padding:22px; font-size:1.2rem; margin-top:8px; }
+  #micBtn.rec { background:var(--red); animation:pulse2 1s infinite; }
+  #micBtn:disabled { background:#9db4dc; }
+  @keyframes pulse2 { 0%{box-shadow:0 0 0 0 rgba(229,72,77,.5)} 100%{box-shadow:0 0 0 18px rgba(229,72,77,0)} }
+  #hangBtn { background:var(--red); padding:14px; margin-top:10px; width:100%; }
+  .note { font-size:.78rem; color:#7a879f; margin:12px 0 0; }
+</style>
+</head>
+<body>
+<div class="app">
+  <h1>Athena Hospital</h1>
+  <p class="sub">Décrivez vos symptômes à Athena et prenez rendez-vous.</p>
+
+  <div id="startScreen">
+    <select id="lang">
+      <option value="fr-FR">Français</option>
+      <option value="ar-TN">العربية</option>
+      <option value="en-US">English</option>
+    </select><br>
+    <button id="callBtn">📞 Appeler Athena</button>
+  </div>
+
+  <div id="callScreen">
+    <div class="avatar" id="avatar">A</div>
+    <div class="timer" id="timer">00:00</div>
+    <div id="status"></div>
+    <div id="log"></div>
+    <button id="micBtn">🎙️ Appuyer pour parler</button>
+    <button id="hangBtn">Raccrocher</button>
+  </div>
+
+  <p class="note">Athena oriente vers un spécialiste et ne remplace pas un médecin. En cas d'urgence, appelez le 190.</p>
+</div>
+
+<script>
+const csrf = "{{ csrf_token }}";
+const $ = id => document.getElementById(id);
+const TTS_LANG = { fr: "fr-FR", ar: "ar-SA", en: "en-US" };
+const GREETINGS = {
+  fr: "Bonjour, je suis Athena, l'assistante de l'hôpital. Appuyez sur le micro et décrivez-moi ce que vous ressentez.",
+  ar: "أهلا بيك، أنا أثينا، مساعدة السبيطار. اضغط على الميكرو وقلّي شنوة اللي تحسّ بيه.",
+  en: "Hello, I'm Athena, the hospital assistant. Tap the microphone and tell me how you feel."
+};
+const T = {
+  fr: { tap: "🎙️ Appuyer pour parler", send: "⏹️ Appuyer pour envoyer", wait: "Athena réfléchit…", turn: "À vous : appuyez sur le micro",
+        talk: "Athena parle…", nothing: "Je n'ai rien entendu, réessayez.", err: "Désolé, un problème est survenu. Réessayez." },
+  ar: { tap: "🎙️ اضغط للتحدث", send: "⏹️ اضغط للإرسال", wait: "أثينا تفكر…", turn: "دورك: اضغط على الميكرو",
+        talk: "أثينا تتكلم…", nothing: "ما سمعت شيء، عاود جرب.", err: "عفوا، صار مشكل. عاود جرب." },
+  en: { tap: "🎙️ Tap to talk", send: "⏹️ Tap to send", wait: "Athena is thinking…", turn: "Your turn: tap the microphone",
+        talk: "Athena is speaking…", nothing: "I didn't hear anything, try again.", err: "Sorry, something went wrong. Try again." }
+};
+
+let calling = false, state = "idle", stream = null, rec = null, chunks = [], timerId = null, seconds = 0;
+const player = new Audio();
+const lang = () => $("lang").value.split("-")[0];
+const t = k => T[lang()][k];
+
+function setStatus(s) { $("status").textContent = s; }
+function addLine(who, text) {
+  const d = document.createElement("div");
+  if (who === "me") d.className = "me";
+  d.dir = "auto";
+  d.textContent = text;
+  $("log").appendChild(d);
+  $("log").scrollTop = $("log").scrollHeight;
+}
+function cleanForSpeech(s) { return s.replace(/[*#_`>~]+/g, " ").replace(/\s-\s/g, ", ").replace(/\s+/g, " ").trim(); }
+
+function ready() {
+  if (!calling) return;
+  state = "idle";
+  $("micBtn").disabled = false;
+  $("micBtn").className = "";
+  $("micBtn").textContent = t("tap");
+  $("avatar").classList.remove("talking");
+  setStatus(t("turn"));
+}
+
+function browserSpeak(clean) {
+  const u = new SpeechSynthesisUtterance(clean);
+  u.lang = TTS_LANG[lang()];
+  u.onend = ready;
+  u.onerror = ready;
+  speechSynthesis.speak(u);
+}
+
+async function speak(text) {
+  speechSynthesis.cancel();
+  player.pause();
+  state = "speaking";
+  $("avatar").classList.add("talking");
+  setStatus(t("talk"));
+  const clean = cleanForSpeech(text);
+  try {
+    const r = await fetch("/api/tts/", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-CSRFToken": csrf },
+      body: JSON.stringify({ text: clean, lang: lang() })
+    });
+    if (!r.ok) throw new Error("tts");
+    player.src = URL.createObjectURL(await r.blob());
+    player.onended = ready;
+    player.onerror = ready;
+    await player.play();
+  } catch (e) {
+    browserSpeak(clean);
+  }
+}
+
+async function startRec() {
+  const mime = MediaRecorder.isTypeSupported("audio/webm;codecs=opus") ? "audio/webm;codecs=opus"
+             : MediaRecorder.isTypeSupported("audio/mp4") ? "audio/mp4" : "";
+  rec = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
+  chunks = [];
+  rec.ondataavailable = e => { if (e.data && e.data.size) chunks.push(e.data); };
+  rec.onstop = onRecStop;
+  rec.start();
+  state = "recording";
+  $("micBtn").className = "rec";
+  $("micBtn").textContent = t("send");
+  $("avatar").classList.remove("talking");
+  setStatus("🎙️ …");
+}
+
+function stopRec() { if (rec && rec.state !== "inactive") rec.stop(); }
+
+async function onRecStop() {
+  if (!calling) return;
+  state = "thinking";
+  $("micBtn").disabled = true;
+  $("micBtn").className = "";
+  setStatus(t("wait"));
+  const blob = new Blob(chunks, { type: rec.mimeType || "audio/webm" });
+  if (blob.size < 2000) { addLine("ath", t("nothing")); ready(); return; }
+
+  let text = "";
+  try {
+    const fd = new FormData();
+    fd.append("audio", blob, "speech");
+    fd.append("lang", lang());
+    const r = await fetch("/api/transcribe/", { method: "POST", headers: { "X-CSRFToken": csrf }, body: fd });
+    text = ((await r.json()).text || "").trim();
+  } catch (e) {}
+  if (!calling) return;
+  if (!text) { addLine("ath", t("nothing")); ready(); return; }
+
+  addLine("me", text);
+  let reply = t("err");
+  try {
+    const r = await fetch("/api/chat/", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-CSRFToken": csrf },
+      body: JSON.stringify({ message: text, lang: lang() })
+    });
+    const data = await r.json();
+    if (data.reply) reply = data.reply;
+  } catch (e) {}
+  if (!calling) return;
+  addLine("ath", reply);
+  speak(reply);
+}
+
+$("micBtn").onclick = async () => {
+  if (state === "recording") { stopRec(); return; }
+  if (state === "thinking") return;
+  speechSynthesis.cancel();
+  player.pause();
+  try { await startRec(); } catch (e) { setStatus(t("err")); }
+};
+
+$("callBtn").onclick = async () => {
+  if (!navigator.mediaDevices || !window.MediaRecorder) {
+    alert("Ce navigateur ne permet pas d'enregistrer la voix. Utilisez Chrome (Android) ou Safari (iPhone).");
+    return;
+  }
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
+  } catch (e) {
+    alert("Le micro est refusé. Autorisez-le dans les réglages du navigateur, puis réessayez.");
+    return;
+  }
+  calling = true; seconds = 0;
+  $("log").innerHTML = "";
+  document.documentElement.dir = lang() === "ar" ? "rtl" : "ltr";
+  $("startScreen").style.display = "none";
+  $("callScreen").style.display = "flex";
+  $("micBtn").disabled = true;
+  timerId = setInterval(() => {
+    seconds++;
+    $("timer").textContent = String(Math.floor(seconds / 60)).padStart(2, "0") + ":" + String(seconds % 60).padStart(2, "0");
+  }, 1000);
+  const greet = GREETINGS[lang()];
+  addLine("ath", greet);
+  speak(greet);
+};
+
+$("hangBtn").onclick = () => {
+  calling = false; state = "idle";
+  if (rec && rec.state !== "inactive") { rec.onstop = null; rec.stop(); }
+  if (stream) { stream.getTracks().forEach(tr => tr.stop()); stream = null; }
+  speechSynthesis.cancel();
+  player.pause();
+  clearInterval(timerId);
+  fetch("/api/reset/", { method: "POST", headers: { "X-CSRFToken": csrf } });
+  document.documentElement.dir = "ltr";
+  $("avatar").classList.remove("talking");
+  $("callScreen").style.display = "none";
+  $("startScreen").style.display = "block";
+};
+</script>
+</body>
+</html>
