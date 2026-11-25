@@ -1,0 +1,15 @@
+{% extends "accounts/base.html" %}
+{% block title %}Choisir une spécialité{% endblock %}
+{% block content %}
+  <a class="crumb" href="{% url 'patient_dashboard' %}">← Mon espace</a>
+  <h1>Prendre rendez-vous</h1>
+  <p class="sub">Étape 1 sur 2 : choisissez une spécialité.</p>
+  {% for s in specialties %}
+    <a class="opt" href="{% url 'book_slots' s.id %}">
+      <div class="t"><span>{{ s.name }}</span><span class="go">→</span></div>
+      {% if s.description %}<div class="d">{{ s.description|truncatechars:110 }}</div>{% endif %}
+    </a>
+  {% empty %}
+    <p class="muted">Aucun médecin n'est disponible pour le moment. Réessayez plus tard.</p>
+  {% endfor %}
+{% endblock %}

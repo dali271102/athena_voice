@@ -1,0 +1,45 @@
+{% extends "accounts/base.html" %}
+{% block title %}{{ specialty.name }} : horaires{% endblock %}
+{% block content %}
+  <a class="crumb" href="{% url 'book_specialty' %}">← Spécialités</a>
+  <h1>{{ specialty.name }}</h1>
+  <p class="sub">Étape 2 sur 2 : choisissez un jour, puis un horaire.</p>
+
+  <div class="chips">
+    {% for d in days %}
+      <a class="chip {% if d == day %}active{% endif %}" href="?date={{ d|date:'Y-m-d' }}">{{ d|date:"D d/m" }}</a>
+    {% endfor %}
+  </div>
+
+  <form method="post" action="{% url 'book_confirm' %}" id="bookForm">
+    {% csrf_token %}
+    <input type="hidden" name="date" value="{{ day|date:'Y-m-d' }}">
+
+    {% for doc in doctors %}
+      <div class="docbox">
+        <strong>Dr {{ doc.doctor }}</strong>
+        <div class="slots">
+          {% for t in doc.slots %}
+            <label class="slot">
+              <input type="radio" name="slot" value="{{ doc.doctor_id }}|{{ t }}" required>
+              <span>{{ t }}</span>
+            </label>
+          {% endfor %}
+        </div>
+      </div>
+    {% empty %}
+      <p class="muted">Aucun horaire libre ce jour-là. Essayez un autre jour.</p>
+    {% endfor %}
+
+    {% if doctors %}
+      <label for="symptoms">Motif de la consultation (facultatif)</label>
+      <textarea id="symptoms" name="symptoms" maxlength="500" placeholder="Décrivez brièvement vos symptômes"></textarea>
+      <button class="btn" type="submit" id="confirmBtn" disabled>Confirmer le rendez-vous</button>
+    {% endif %}
+  </form>
+
+  <script>
+    const form = document.getElementById("bookForm"), btn = document.getElementById("confirmBtn");
+    if (btn) form.addEventListener("change", e => { if (e.target.name === "slot") btn.disabled = false; });
+  </script>
+{% endblock %}

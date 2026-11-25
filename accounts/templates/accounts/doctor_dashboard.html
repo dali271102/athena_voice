@@ -1,0 +1,42 @@
+{% extends "accounts/base.html" %}
+{% block title %}Mon espace médecin{% endblock %}
+{% block content %}
+  <header class="top">
+    <div><h1>Dr {{ doctor.full_name }}</h1><p class="sub">{{ doctor.specialty }}</p></div>
+    <form class="inline" method="post" action="{% url 'logout' %}">{% csrf_token %}<button type="submit">Déconnexion</button></form>
+  </header>
+
+  {% if doctor.status == "pending" %}
+    <div class="banner">⏳ Votre compte est en attente d'acceptation par un administrateur.
+      Vous recevrez des rendez-vous une fois votre numéro d'inscription à l'Ordre vérifié.</div>
+  {% elif doctor.status == "rejected" %}
+    <div class="banner error">❌ Votre inscription a été refusée.
+      {% if doctor.rejection_reason %}<br><strong>Motif :</strong> {{ doctor.rejection_reason }}{% endif %}
+      <br>Contactez l'administration pour plus d'informations.</div>
+  {% elif not doctor.is_active %}
+    <div class="banner">Votre compte est désactivé. Contactez l'administration.</div>
+  {% endif %}
+
+  <a class="opt" href="{% url 'doctor_hours' %}">
+    <div class="t"><span>🕘 Mes horaires de travail</span><span class="go">→</span></div>
+    <div class="d">Choisissez les jours et les heures où les patients peuvent prendre rendez-vous.</div>
+  </a>
+
+  <h2>Rendez-vous à venir</h2>
+  {% for a in appointments %}
+    <div class="appt">
+      <div class="when">{{ a.start|date:"l d/m/Y" }} à {{ a.start|time:"H:i" }}
+        {% if a.created_by_ai %}<small>(pris par Athena)</small>{% endif %}</div>
+      <div><strong>{{ a.patient.full_name }}</strong>{% if a.patient.phone %} · {{ a.patient.phone }}{% endif %}</div>
+      {% if a.symptoms_summary %}<div class="muted">Symptômes : {{ a.symptoms_summary }}</div>{% endif %}
+      <form class="cancel-form" method="post" action="{% url 'cancel_appointment' a.id %}"
+            onsubmit="return confirm('Annuler ce rendez-vous ? Le patient sera informé sur son espace.');">
+        {% csrf_token %}
+        <input name="reason" maxlength="300" placeholder="Motif (facultatif)">
+        <button class="mini" type="submit">Annuler</button>
+      </form>
+    </div>
+  {% empty %}
+    <p class="muted">Aucun rendez-vous à venir.</p>
+  {% endfor %}
+{% endblock %}

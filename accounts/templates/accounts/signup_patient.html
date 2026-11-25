@@ -1,0 +1,21 @@
+{% extends "accounts/base.html" %}
+{% block title %}Inscription patient{% endblock %}
+{% block content %}
+  <h1>Compte patient</h1>
+  <p class="sub">Créez votre compte pour parler à Athena et suivre vos rendez-vous.</p>
+  <form method="post">
+    {% csrf_token %}
+    {% for field in form %}
+      <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+      {{ field }}
+      {% if field.help_text %}<div class="help">{{ field.help_text|safe }}</div>{% endif %}
+      {% for e in field.errors %}<div class="err">{{ e }}</div>{% endfor %}
+    {% endfor %}
+    {% for e in form.non_field_errors %}<div class="err">{{ e }}</div>{% endfor %}
+    <button class="btn" type="submit">Créer mon compte</button>
+  </form>
+  <div class="links">
+    <a href="{% url 'login' %}">J'ai déjà un compte</a> ·
+    <a href="{% url 'doctor_signup' %}">Je suis médecin</a>
+  </div>
+{% endblock %}

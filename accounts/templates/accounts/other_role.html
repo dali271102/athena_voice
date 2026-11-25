@@ -1,0 +1,7 @@
+{% extends "accounts/base.html" %}
+{% block title %}Espace personnel{% endblock %}
+{% block content %}
+  <h1>Bonjour {{ user.get_full_name|default:user.username }}</h1>
+  <p class="sub">Rôle : {{ user.get_role_display }}. Votre espace sera disponible bientôt.</p>
+  <form method="post" action="{% url 'logout' %}">{% csrf_token %}<button class="btn grey" type="submit">Déconnexion</button></form>
+{% endblock %}

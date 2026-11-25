@@ -15,9 +15,14 @@
   .sub { margin:0 0 20px; color:#52627f; }
   #startScreen { margin:auto 0; }
   #callScreen { display:none; flex:1; min-height:0; flex-direction:column; }
-  select { padding:12px 14px; border-radius:14px; border:1px solid #cfd9ee; font-size:1rem; margin-bottom:20px; background:#fff; }
   button { border:0; border-radius:999px; font-size:1.05rem; color:#fff; cursor:pointer; }
-  #callBtn { background:var(--blue); padding:18px 36px; font-size:1.15rem; }
+
+  .langs { display:flex; gap:10px; margin-bottom:24px; }
+  .langs button { flex:1; background:#fff; color:var(--text); border:2px solid #cfd9ee; border-radius:18px;
+                  padding:16px 6px; font-size:1.05rem; font-weight:600; }
+  .langs button.active { border-color:var(--blue); background:#e8f1ff; color:var(--blue-dark); }
+
+  #callBtn { background:var(--blue); padding:18px 36px; font-size:1.15rem; width:100%; }
   .avatar { width:84px; height:84px; border-radius:50%; background:var(--blue); color:#fff; font-size:2.2rem;
             display:flex; align-items:center; justify-content:center; margin:0 auto 8px; }
   .avatar.talking { animation:pulse 1.2s infinite; }
@@ -32,21 +37,24 @@
   #micBtn:disabled { background:#9db4dc; }
   @keyframes pulse2 { 0%{box-shadow:0 0 0 0 rgba(229,72,77,.5)} 100%{box-shadow:0 0 0 18px rgba(229,72,77,0)} }
   #hangBtn { background:var(--red); padding:14px; margin-top:10px; width:100%; }
-  .note { font-size:.78rem; color:#7a879f; margin:12px 0 0; }
+
+  .note { font-size:.8rem; color:#7a879f; margin:12px 0 8px; }
+  .sos { background:#fff1f1; border:1px solid #f3b9bb; color:#a3262b; border-radius:14px; padding:10px 12px; font-size:.9rem; }
+  .sos a { color:#a3262b; font-weight:700; }
 </style>
 </head>
 <body>
 <div class="app">
   <h1>Athena Hospital</h1>
-  <p class="sub">Décrivez vos symptômes à Athena et prenez rendez-vous.</p>
+  <p class="sub" id="sub"></p>
 
   <div id="startScreen">
-    <select id="lang">
-      <option value="fr-FR">Français</option>
-      <option value="ar-TN">العربية</option>
-      <option value="en-US">English</option>
-    </select><br>
-    <button id="callBtn">📞 Appeler Athena</button>
+    <div class="langs">
+      <button data-lang="fr" class="active">Français</button>
+      <button data-lang="ar">العربية</button>
+      <button data-lang="en">English</button>
+    </div>
+    <button id="callBtn"></button>
   </div>
 
   <div id="callScreen">
@@ -54,17 +62,30 @@
     <div class="timer" id="timer">00:00</div>
     <div id="status"></div>
     <div id="log"></div>
-    <button id="micBtn">🎙️ Appuyer pour parler</button>
-    <button id="hangBtn">Raccrocher</button>
+    <button id="micBtn"></button>
+    <button id="hangBtn"></button>
   </div>
 
-  <p class="note">Athena oriente vers un spécialiste et ne remplace pas un médecin. En cas d'urgence, appelez le 190.</p>
+  <p class="note" id="note"></p>
+  <div class="sos" id="sos"></div>
 </div>
 
 <script>
 const csrf = "{{ csrf_token }}";
 const $ = id => document.getElementById(id);
 const TTS_LANG = { fr: "fr-FR", ar: "ar-SA", en: "en-US" };
+
+const UI = {
+  fr: { sub: "Décrivez vos symptômes à Athena et prenez rendez-vous.", call: "📞 Appeler Athena", hang: "Raccrocher",
+        note: "Athena vous oriente vers un spécialiste. Elle ne remplace pas un médecin.",
+        sos: "🚨 Urgence ? Appelez le <a href='tel:190'>190</a> (SAMU)." },
+  ar: { sub: "قلّ لأثينا شنوة تحسّ وخذ موعد.", call: "📞 كلّم أثينا", hang: "إنهاء المكالمة",
+        note: "أثينا تعاونك تلقى الطبيب المناسب، وما تعوّضش الطبيب.",
+        sos: "🚨 حالة طارئة؟ اتصل بالـ <a href='tel:190'>190</a> (الإسعاف)." },
+  en: { sub: "Describe your symptoms to Athena and book an appointment.", call: "📞 Call Athena", hang: "Hang up",
+        note: "Athena guides you to a specialist. She does not replace a doctor.",
+        sos: "🚨 Emergency? Call <a href='tel:190'>190</a> (SAMU)." }
+};
 const GREETINGS = {
   fr: "Bonjour, je suis Athena, l'assistante de l'hôpital. Appuyez sur le micro et décrivez-moi ce que vous ressentez.",
   ar: "أهلا بيك، أنا أثينا، مساعدة السبيطار. اضغط على الميكرو وقلّي شنوة اللي تحسّ بيه.",
@@ -79,10 +100,26 @@ const T = {
         talk: "Athena is speaking…", nothing: "I didn't hear anything, try again.", err: "Sorry, something went wrong. Try again." }
 };
 
+let curLang = "fr";
 let calling = false, state = "idle", stream = null, rec = null, chunks = [], timerId = null, seconds = 0;
 const player = new Audio();
-const lang = () => $("lang").value.split("-")[0];
-const t = k => T[lang()][k];
+const lang = () => curLang;
+const t = k => T[curLang][k];
+
+function applyLang(code) {
+  curLang = code;
+  document.documentElement.lang = code;
+  document.documentElement.dir = code === "ar" ? "rtl" : "ltr";
+  const u = UI[code];
+  $("sub").textContent = u.sub;
+  $("callBtn").textContent = u.call;
+  $("hangBtn").textContent = u.hang;
+  $("note").textContent = u.note;
+  $("sos").innerHTML = u.sos;
+  document.querySelectorAll(".langs button").forEach(b => b.classList.toggle("active", b.dataset.lang === code));
+}
+document.querySelectorAll(".langs button").forEach(b => { b.onclick = () => applyLang(b.dataset.lang); });
+applyLang("fr");
 
 function setStatus(s) { $("status").textContent = s; }
 function addLine(who, text) {
@@ -210,10 +247,10 @@ $("callBtn").onclick = async () => {
   }
   calling = true; seconds = 0;
   $("log").innerHTML = "";
-  document.documentElement.dir = lang() === "ar" ? "rtl" : "ltr";
   $("startScreen").style.display = "none";
   $("callScreen").style.display = "flex";
   $("micBtn").disabled = true;
+  $("micBtn").textContent = t("tap");
   timerId = setInterval(() => {
     seconds++;
     $("timer").textContent = String(Math.floor(seconds / 60)).padStart(2, "0") + ":" + String(seconds % 60).padStart(2, "0");
@@ -231,7 +268,6 @@ $("hangBtn").onclick = () => {
   player.pause();
   clearInterval(timerId);
   fetch("/api/reset/", { method: "POST", headers: { "X-CSRFToken": csrf } });
-  document.documentElement.dir = "ltr";
   $("avatar").classList.remove("talking");
   $("callScreen").style.display = "none";
   $("startScreen").style.display = "block";

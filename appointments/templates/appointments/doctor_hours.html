@@ -1,0 +1,38 @@
+{% extends "accounts/base.html" %}
+{% block title %}Mes horaires{% endblock %}
+{% block content %}
+  <a class="crumb" href="{% url 'doctor_dashboard' %}">← Mon espace</a>
+  <h1>Mes horaires de travail</h1>
+  <p class="sub">Les patients peuvent réserver uniquement pendant ces plages. Chaque rendez-vous dure la durée choisie.</p>
+
+  {% for h in hours %}
+    <div class="hrow">
+      <div><strong>{{ h.get_weekday_display }}</strong> · {{ h.start|time:"H:i" }} – {{ h.end|time:"H:i" }}
+        <small>({{ h.slot_minutes }} min)</small></div>
+      <form method="post" action="{% url 'doctor_hours_delete' h.id %}" onsubmit="return confirm('Supprimer cet horaire ?');">
+        {% csrf_token %}<button class="mini" type="submit">Supprimer</button>
+      </form>
+    </div>
+  {% empty %}
+    <p class="muted">Aucun horaire pour le moment : les patients ne peuvent pas vous réserver.</p>
+  {% endfor %}
+
+  <h2>Ajouter une plage</h2>
+  <form method="post">
+    {% csrf_token %}
+    {% for e in form.non_field_errors %}<div class="err">{{ e }}</div>{% endfor %}
+    <label for="{{ form.weekday.id_for_label }}">{{ form.weekday.label }}</label>
+    {{ form.weekday }}
+    {% for e in form.weekday.errors %}<div class="err">{{ e }}</div>{% endfor %}
+    <div class="two">
+      <div><label for="{{ form.start.id_for_label }}">{{ form.start.label }}</label>{{ form.start }}
+        {% for e in form.start.errors %}<div class="err">{{ e }}</div>{% endfor %}</div>
+      <div><label for="{{ form.end.id_for_label }}">{{ form.end.label }}</label>{{ form.end }}
+        {% for e in form.end.errors %}<div class="err">{{ e }}</div>{% endfor %}</div>
+    </div>
+    <label for="{{ form.slot_minutes.id_for_label }}">{{ form.slot_minutes.label }}</label>
+    {{ form.slot_minutes }}
+    {% for e in form.slot_minutes.errors %}<div class="err">{{ e }}</div>{% endfor %}
+    <button class="btn" type="submit">Ajouter</button>
+  </form>
+{% endblock %}

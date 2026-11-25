@@ -1,0 +1,42 @@
+{% extends "accounts/base.html" %}
+{% block title %}Mon espace patient{% endblock %}
+{% block content %}
+  <header class="top">
+    <div><h1>Bonjour {{ patient.full_name }}</h1><p class="sub">Comment voulez-vous prendre rendez-vous ?</p></div>
+    <form class="inline" method="post" action="{% url 'logout' %}">{% csrf_token %}<button type="submit">Déconnexion</button></form>
+  </header>
+
+  <a class="opt primary" href="{% url 'athena' %}">
+    <div class="t"><span>🎙️ Parler à Athena</span><span class="go">↗</span></div>
+    <div class="d">Décrivez vos symptômes à voix haute. Athena choisit la bonne spécialité et prend le rendez-vous pour vous.</div>
+  </a>
+  <a class="opt" href="{% url 'book_specialty' %}">
+    <div class="t"><span>📅 Prendre rendez-vous moi-même</span><span class="go">↗</span></div>
+    <div class="d">Choisissez la spécialité, le médecin et l'horaire qui vous conviennent.</div>
+  </a>
+
+  <h2>Mes prochains rendez-vous</h2>
+  {% for a in appointments %}
+    <div class="appt">
+      <div class="when">{{ a.start|date:"l d/m/Y" }} à {{ a.start|time:"H:i" }}</div>
+      <div>Dr {{ a.doctor.full_name }} · {{ a.doctor.specialty }}</div>
+      <form class="cancel-form" method="post" action="{% url 'cancel_appointment' a.id %}"
+            onsubmit="return confirm('Annuler ce rendez-vous ?');">
+        {% csrf_token %}
+        <button class="mini" type="submit">Annuler</button>
+      </form>
+    </div>
+  {% empty %}
+    <p class="muted">Aucun rendez-vous à venir.</p>
+  {% endfor %}
+
+  {% if cancelled %}
+    <h2>Rendez-vous annulés</h2>
+    {% for a in cancelled %}
+      <div class="appt cancelled">
+        <div class="when">{{ a.start|date:"d/m/Y" }} à {{ a.start|time:"H:i" }} · Dr {{ a.doctor.full_name }}</div>
+        <small>Annulé par {% if a.cancelled_by_id == a.patient.user_id %}vous{% else %}le médecin{% endif %}{% if a.cancel_reason %} : {{ a.cancel_reason }}{% endif %}</small>
+      </div>
+    {% endfor %}
+  {% endif %}
+{% endblock %}
